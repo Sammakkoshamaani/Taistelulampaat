@@ -2,7 +2,7 @@
 
 A fan-made browser version of the tactical board game **Battle Sheep**. You can play online with up to 4 players, against bots, or hot-seat on one device.
 
-**Play:** https://&lt;your-github-username&gt;.github.io/battle-sheeps/
+**Play online:** https://sammakkoshamaani.github.io/Taistelulampaat/
 
 ## Features
 
