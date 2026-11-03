@@ -1,0 +1,11 @@
+{
+  "name": "battle-sheeps",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Online multiplayer Battle Sheeps (1-4 players + bots), peer-to-peer via WebRTC.",
+  "scripts": {
+    "test": "node tests/sim.js 20 && node tests/room.js",
+    "serve": "python3 -m http.server 8080"
+  }
+}
