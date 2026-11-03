@@ -239,3 +239,4 @@ export function choosePlacement(state, p, level = 'medium') {
   }
   return best;
 }
+

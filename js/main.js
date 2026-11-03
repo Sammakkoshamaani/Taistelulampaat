@@ -806,3 +806,4 @@ if (urlRoom) {
   }
 }
 showScreen('home');
+

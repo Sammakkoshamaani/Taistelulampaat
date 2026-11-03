@@ -51,3 +51,4 @@ for (const levels of matchups) {
   console.log(`${levels.join(' vs ').padEnd(32)} wins: ${wins.join(' / ')}   avg bot ms: ${(totalMs / botCalls).toFixed(1)}`);
 }
 console.log('All simulations passed.');
+

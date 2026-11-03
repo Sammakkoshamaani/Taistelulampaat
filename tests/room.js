@@ -78,3 +78,4 @@ assert.ok(room.handle('host', { type: 'reroll' }).ok);
 assert.ok(room.handle('host', { type: 'toLobby' }).ok);
 assert.equal(room.game, null);
 console.log('Room tests passed.');
+

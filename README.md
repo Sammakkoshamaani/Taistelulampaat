@@ -42,3 +42,4 @@ node tests/room.js
 The host has the final say on game state. Guests send actions, the host checks them and sends the new state to everyone. If the host closes their tab, the room closes.
 
 > Battle Sheep is a trademark of Blue Orange Games. This is a fan project for personal and educational use. It is not affiliated with or endorsed by Blue Orange Games.
+
