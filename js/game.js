@@ -8,10 +8,10 @@ export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 4;
 
 export const PLAYER_COLORS = [
-  { name: 'Red', main: '#e5484d', dark: '#8f1d21', light: '#ffd5d6' },
-  { name: 'Blue', main: '#3e8ef7', dark: '#163f80', light: '#d3e5ff' },
-  { name: 'Yellow', main: '#f5c518', dark: '#7d6200', light: '#fff1bd' },
-  { name: 'Purple', main: '#9b59d0', dark: '#4c2370', light: '#ecdcf8' },
+  { name: 'Punainen', main: '#e5484d', dark: '#8f1d21', light: '#ffd5d6' },
+  { name: 'Sininen', main: '#3e8ef7', dark: '#163f80', light: '#d3e5ff' },
+  { name: 'Keltainen', main: '#f5c518', dark: '#7d6200', light: '#fff1bd' },
+  { name: 'Liila', main: '#9b59d0', dark: '#4c2370', light: '#ecdcf8' },
 ];
 
 export const key = (q, r) => `${q},${r}`;
@@ -136,7 +136,7 @@ export function createGame({ players, seed = (Math.random() * 2 ** 32) >>> 0, st
     turn: placementQueue[0],
     moveNo: 0,
     lastMove: null,
-    log: [{ text: `New pasture with ${board.size} fields. ${players[placementQueue[0]].name} places first.` }],
+    log: [{ text: `Uusi laidun luotu (${board.size} ruutua). ${players[placementQueue[0]].name} asettaa lauman ensimmäisenä.` }],
     seed,
     style,
     randomStart,
@@ -212,7 +212,7 @@ function finishGame(state) {
   state.turn = -1;
   state.results = computeResults(state);
   const w = state.results.filter((r) => r.rank === 1).map((r) => state.players[r.player].name);
-  pushLog(state, { text: w.length > 1 ? `Game over – tie between ${w.join(' & ')}!` : `Game over – ${w[0]} wins!` });
+  pushLog(state, { text: w.length > 1 ? `Peli päättyi – tasapeli pelaajien ${w.join(' & ')} välillä!` : `Peli päättyi – ${w[0]} voitti!` });
 }
 
 /**
@@ -221,15 +221,15 @@ function finishGame(state) {
  * Returns { ok: true } or { ok: false, error }.
  */
 export function applyAction(state, p, action) {
-  if (state.turn !== p) return { ok: false, error: 'Not your turn' };
+  if (state.turn !== p) return { ok: false, error: 'Ei ole sinun vuorosi' };
   if (action.type === 'place') {
-    if (state.phase !== 'placement') return { ok: false, error: 'Not placement phase' };
+    if (state.phase !== 'placement') return { ok: false, error: 'Ei ole aloitussijoitusvaihe' };
     const c = state.cells[action.key];
-    if (!c || c.owner >= 0 || !isBorderCell(state.cells, action.key)) return { ok: false, error: 'Flock must start on an empty edge pasture' };
+    if (!c || c.owner >= 0 || !isBorderCell(state.cells, action.key)) return { ok: false, error: 'Lauman on aloitettava tyhjältä reunaruudulta' };
     c.owner = p;
     c.count = SHEEP_PER_PLAYER;
     state.lastMove = { type: 'place', player: p, to: action.key };
-    pushLog(state, { player: p, text: `${state.players[p].name} put the flock on the pasture.` });
+    pushLog(state, { player: p, text: `${state.players[p].name} asetti lauman laitumelle.` });
     state.placementQueue.shift();
     if (state.placementQueue.length) {
       state.turn = state.placementQueue[0];
@@ -243,24 +243,25 @@ export function applyAction(state, p, action) {
     return { ok: true };
   }
   if (action.type === 'move') {
-    if (state.phase !== 'play') return { ok: false, error: 'Not play phase' };
+    if (state.phase !== 'play') return { ok: false, error: 'Ei ole siirtovaihe' };
     const { from, to } = action;
     const count = Math.floor(Number(action.count));
     const c = state.cells[from];
-    if (!c || c.owner !== p) return { ok: false, error: 'Not your stack' };
-    if (c.count < 2) return { ok: false, error: 'A single sheep cannot be split' };
-    if (!(count >= 1 && count <= c.count - 1)) return { ok: false, error: 'Leave at least one sheep behind' };
-    if (!destinationsFrom(state.cells, from).some((d) => d.to === to)) return { ok: false, error: 'Sheep must move in a straight line as far as possible' };
+    if (!c || c.owner !== p) return { ok: false, error: 'Tämä ei ole sinun pinosi' };
+    if (c.count < 2) return { ok: false, error: 'Yksittäistä lammasta ei voi enää jakaa' };
+    if (!(count >= 1 && count <= c.count - 1)) return { ok: false, error: 'Jätä vähintään yksi lammas paikalleen' };
+    if (!destinationsFrom(state.cells, from).some((d) => d.to === to)) return { ok: false, error: 'Lampaiden on kuljettava suorassa linjassa niin pitkälle kuin mahdollista' };
     c.count -= count;
     state.cells[to].owner = p;
     state.cells[to].count = count;
     state.moveNo++;
     state.lastMove = { type: 'move', player: p, from, to, count };
-    pushLog(state, { player: p, text: `${state.players[p].name} moved ${count} sheep.` });
+    const word = count === 1 ? 'lampaan' : 'lammasta';
+    pushLog(state, { player: p, text: `${state.players[p].name} siirsi ${count} ${word}.` });
     advanceTurn(state, p);
     return { ok: true };
   }
-  return { ok: false, error: 'Unknown action' };
+  return { ok: false, error: 'Tuntematon toiminto' };
 }
 
 /** Skips a player who is stuck (used defensively). */

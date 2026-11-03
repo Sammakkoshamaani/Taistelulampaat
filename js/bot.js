@@ -3,7 +3,8 @@
 import { DIRS, key, parseKey, validPlacements } from './game.js';
 
 export const BOT_LEVELS = ['easy', 'medium', 'hard'];
-export const BOT_NAMES = ['Shaun', 'Dolly', 'Baarbara', 'Woolfgang', 'Lambert', 'Fleecy', 'Ewegene', 'Mutton Jr.'];
+export const BOT_LEVEL_NAMES = { easy: 'helppo', medium: 'keskitaso', hard: 'vaikea' };
+export const BOT_NAMES = ['Villapallo', 'Karitsa', 'Pässi-Pekka', 'Mää-Mää', 'Untuva', 'Villasukka', 'Kipittäjä', 'Lammur'];
 
 function buildGeo(cells) {
   const keys = Object.keys(cells);

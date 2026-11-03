@@ -1,12 +1,13 @@
 // Battle Sheeps – authoritative game room. Runs on the host's browser.
 // Holds lobby seats + game state, validates every action, drives bots.
 import { createGame, applyAction, PLAYER_COLORS, MAX_PLAYERS, MIN_PLAYERS } from './game.js';
-import { chooseMove, choosePlacement, BOT_NAMES } from './bot.js';
+import { chooseMove, choosePlacement, BOT_NAMES, BOT_LEVEL_NAMES } from './bot.js';
 
 const BOT_DELAY = { placement: 700, play: 900 };
 
 function botName(i, level) {
-  return `${BOT_NAMES[i % BOT_NAMES.length]} (${level} bot)`;
+  const fiLevel = BOT_LEVEL_NAMES[level] || level;
+  return `${BOT_NAMES[i % BOT_NAMES.length]} (${fiLevel} botti)`;
 }
 
 export class Room {
@@ -19,7 +20,7 @@ export class Room {
     this.botTimer = null;
     this.options = { style: 'normal', randomStart: true };
     this.seats = [
-      { type: 'host', name: hostName || 'Host', connected: true },
+      { type: 'host', name: hostName || 'Paimen', connected: true },
       online ? { type: 'open' } : { type: 'bot', botLevel: 'medium', name: botName(1, 'medium') },
       { type: online ? 'open' : 'closed' },
       { type: 'closed' },
@@ -56,7 +57,7 @@ export class Room {
     if (!this.game) {
       const open = this.seats.findIndex((s) => s.type === 'open');
       if (open >= 0) {
-        this.seats[open] = { type: 'human', name: name || `Player ${open + 1}`, clientId, connected: true };
+        this.seats[open] = { type: 'human', name: name || `Pelaaja ${open + 1}`, clientId, connected: true };
         this.emit();
         return open;
       }
@@ -94,36 +95,36 @@ export class Room {
     switch (a.type) {
       case 'place':
       case 'move': {
-        if (!this.game) return { ok: false, error: 'No game running' };
-        if (!this.controls(from, this.game.turn)) return { ok: false, error: 'Not your turn' };
+        if (!this.game) return { ok: false, error: 'Peli ei ole käynnissä' };
+        if (!this.controls(from, this.game.turn)) return { ok: false, error: 'Ei ole sinun vuorosi' };
         return applyAction(this.game, this.game.turn, a);
       }
       case 'rename': {
         const i = isHost ? 0 : this.seats.findIndex((s) => s.clientId === from);
-        if (i < 0 || this.game) return { ok: false, error: 'Cannot rename now' };
+        if (i < 0 || this.game) return { ok: false, error: 'Nimeä ei voi vaihtaa nyt' };
         this.seats[i].name = String(a.name || '').slice(0, 20) || this.seats[i].name;
         return { ok: true };
       }
     }
-    if (!isHost) return { ok: false, error: 'Only the host can do that' };
+    if (!isHost) return { ok: false, error: 'Vain huoneen luoja voi tehdä tämän' };
     switch (a.type) {
       case 'setSeat': {
-        if (this.game) return { ok: false, error: 'Game running' };
+        if (this.game) return { ok: false, error: 'Peli on jo käynnissä' };
         const i = a.seat;
-        if (!(i >= 1 && i < MAX_PLAYERS)) return { ok: false, error: 'Bad seat' };
+        if (!(i >= 1 && i < MAX_PLAYERS)) return { ok: false, error: 'Virheellinen paikka' };
         const t = a.seatType;
-        if (t === 'open' && !this.online) return { ok: false, error: 'Offline game' };
+        if (t === 'open' && !this.online) return { ok: false, error: 'Offline-peli' };
         if (t === 'open' || t === 'closed') this.seats[i] = { type: t };
-        else if (t === 'local') this.seats[i] = { type: 'local', name: a.name || `Player ${i + 1}` };
+        else if (t === 'local') this.seats[i] = { type: 'local', name: a.name || `Pelaaja ${i + 1}` };
         else if (t === 'bot') {
           const level = ['easy', 'medium', 'hard'].includes(a.botLevel) ? a.botLevel : 'medium';
           this.seats[i] = { type: 'bot', botLevel: level, name: botName(i, level) };
-        } else return { ok: false, error: 'Bad seat type' };
+        } else return { ok: false, error: 'Virheellinen paikkatyyppi' };
         return { ok: true };
       }
       case 'setSeatName': {
         const s = this.seats[a.seat];
-        if (!s || this.game || !['local', 'host'].includes(s.type)) return { ok: false, error: 'Cannot rename' };
+        if (!s || this.game || !['local', 'host'].includes(s.type)) return { ok: false, error: 'Nimeä ei voi muuttaa' };
         s.name = String(a.name || '').slice(0, 20) || s.name;
         return { ok: true };
       }
@@ -136,12 +137,12 @@ export class Room {
         return this.startGame();
       case 'reroll': {
         if (!this.game || this.game.phase !== 'placement' || this.game.placementQueue.length !== this.game.players.length) {
-          return { ok: false, error: 'Board can only be re-rolled before any flock is placed' };
+          return { ok: false, error: 'Laidun voidaan arpoa uudelleen vain ennen kuin yhtäkään laumaa on sijoitettu' };
         }
         return this.startGame(this.game.players);
       }
       case 'rematch':
-        if (!this.game) return { ok: false, error: 'No game' };
+        if (!this.game) return { ok: false, error: 'Peliä ei löydy' };
         return this.startGame(this.game.players);
       case 'toLobby':
         this.game = null;
@@ -150,14 +151,14 @@ export class Room {
         return { ok: true };
       case 'replaceWithBot': {
         const pl = this.game && this.game.players[a.player];
-        if (!pl || pl.kind === 'bot') return { ok: false, error: 'Bad player' };
+        if (!pl || pl.kind === 'bot') return { ok: false, error: 'Virheellinen pelaaja' };
         pl.kind = 'bot';
         pl.botLevel = 'medium';
-        pl.name = `${pl.name} (bot)`;
+        pl.name = `${pl.name} (botti)`;
         return { ok: true };
       }
     }
-    return { ok: false, error: 'Unknown action' };
+    return { ok: false, error: 'Tuntematon toiminto' };
   }
 
   startGame(existingPlayers) {
@@ -178,7 +179,7 @@ export class Room {
         }
       });
     }
-    if (players.length < MIN_PLAYERS) return { ok: false, error: 'At least 2 players (humans or bots) are needed' };
+    if (players.length < MIN_PLAYERS) return { ok: false, error: 'Peliin tarvitaan vähintään kaksi pelaajaa (ihmistä tai bottia)' };
     this.game = createGame({ players, style: this.options.style, randomStart: this.options.randomStart });
     return { ok: true };
   }

@@ -216,7 +216,7 @@ export class ClientNet {
         peer.on('error', (err) => {
           if (!this.isConnected) {
             if (err.type === 'peer-unavailable') {
-              this.onError(`Room ${this.code} not found. Check the code – the host must keep their tab open.`, true);
+              this.onError(`Huonetta ${this.code} ei löytynyt. Varmista huonekoodi – huoneen luojan välilehden tulee olla auki.`, true);
             } else {
               this.onError(err.message || String(err), true);
             }
@@ -243,7 +243,7 @@ export class ClientNet {
       } catch {}
     }
     if (!sent && !this.isConnected) {
-      this.onError('Not connected to the host', false);
+      this.onError('Ei yhteyttä huoneen luojaan', false);
     }
   }
 

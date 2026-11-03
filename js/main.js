@@ -1,26 +1,27 @@
-// Battle Sheeps – UI and app wiring.
+// Taistelulampaat – käyttöliittymä ja sovelluslogiikka
 import { Room } from './room.js';
 import { HostNet, ClientNet } from './net.js';
 import {
   PLAYER_COLORS, SHEEP_PER_PLAYER, parseKey, key, DIRS,
   validPlacements, destinationsFrom, canMove, countFields,
 } from './game.js';
+import { BOT_LEVEL_NAMES } from './bot.js';
+import { music } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---------------------------------------------------------------------------
-// Persistent identity
+// Pysyvä identiteetti
 // ---------------------------------------------------------------------------
 const store = {
-  get name() { return localStorage.getItem('bs-name') || ''; },
-  set name(v) { localStorage.setItem('bs-name', v); },
+  get name() { return localStorage.getItem('tl-name') || ''; },
+  set name(v) { localStorage.setItem('tl-name', v); },
   get clientId() {
-    // Per tab, so you can test with several tabs; survives reloads.
-    let id = sessionStorage.getItem('bs-client-id');
+    let id = sessionStorage.getItem('tl-client-id');
     if (!id) {
-      id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)) ;
-      sessionStorage.setItem('bs-client-id', id);
+      id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
+      sessionStorage.setItem('tl-client-id', id);
     }
     return id;
   },
@@ -31,14 +32,14 @@ const app = {
   room: null,
   net: null,
   state: null,
-  sel: null, // selected stack key
+  sel: null, // valitun pinon avain
   pending: null, // { from, to, max, go }
   hideGameOver: false,
-  prev: null, // { seed, moveNo, owners } for animations
+  prev: null, // animaatioiden seuranta
 };
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Ilmoitukset ja apufunktiot
 // ---------------------------------------------------------------------------
 let toastTimer;
 function toast(msg) {
@@ -95,8 +96,15 @@ function isMySeat(s, i) {
   return seat.clientId === store.clientId;
 }
 
+function updateMusicUI() {
+  const statusEl = $('music-status');
+  if (statusEl) {
+    statusEl.textContent = music.enabled ? 'Musiikki: Päällä' : 'Musiikki: Pois';
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Sheep artwork
+// Lammasgrafiikka (SVG)
 // ---------------------------------------------------------------------------
 function sheepGroup(colorIdx, s, count) {
   const c = PLAYER_COLORS[colorIdx];
@@ -125,10 +133,10 @@ function sheepIcon(colorIdx, size = 40) {
 }
 
 // ---------------------------------------------------------------------------
-// HOME
+// ALKUNÄYTTÖ
 // ---------------------------------------------------------------------------
 function getName() {
-  const n = $('home-name').value.trim().slice(0, 20) || 'Shepherd';
+  const n = $('home-name').value.trim().slice(0, 20) || 'Paimen';
   store.name = n;
   return n;
 }
@@ -159,18 +167,18 @@ function createGame(online) {
   app.role = 'host';
   app.room = new Room({ hostName: name, online, onState: onHostState });
   if (online) {
-    setNetStatus('Opening room…', 'warn');
+    setNetStatus('Avataan huonetta…', 'warn');
     try {
       app.net = new HostNet(app.room, {
         onReady: (code) => {
           app.room.code = code;
-          setNetStatus('Room open', 'ok');
+          setNetStatus('Huone avattu', 'ok');
           app.room.emit();
         },
         onError: (err) => {
           console.error(err);
-          setNetStatus('Connection problem', 'bad');
-          toast(`Network: ${err.message || err.type || err}`);
+          setNetStatus('Yhteysongelma', 'bad');
+          toast(`Verkkovirhe: ${err.message || err.type || err}`);
         },
       });
       app.net.start();
@@ -184,7 +192,7 @@ function createGame(online) {
 
 function joinGame(code) {
   code = (code || '').trim().toUpperCase();
-  if (!/^[A-Z0-9]{4,6}$/.test(code)) { $('home-error').textContent = 'Enter the 5-letter room code.'; return; }
+  if (!/^[A-Z0-9]{4,6}$/.test(code)) { $('home-error').textContent = 'Syötä 5-merkkinen huonekoodi.'; return; }
   resetSession();
   const name = getName();
   app.role = 'client';
@@ -198,11 +206,11 @@ function joinGame(code) {
         else toast(msg);
       },
       onStatus: (st) => {
-        if (st === 'connected') setNetStatus(`Connected · ${code}`, 'ok');
-        else if (st === 'connecting') setNetStatus('Connecting…', 'warn');
+        if (st === 'connected') setNetStatus(`Yhdistetty · ${code}`, 'ok');
+        else if (st === 'connecting') setNetStatus('Yhdistetään…', 'warn');
         else {
-          setNetStatus('Disconnected – click to reconnect', 'bad');
-          toast('Lost connection to the host.');
+          setNetStatus('Yhteys katkesi – napsauta yhdistääksesi', 'bad');
+          toast('Yhteys huoneen luojaan katkesi.');
         }
       },
     });
@@ -212,7 +220,7 @@ function joinGame(code) {
     return;
   }
   showScreen('lobby');
-  $('seats').innerHTML = '<p class="muted center">Connecting to room <b>' + esc(code) + '</b>…</p>';
+  $('seats').innerHTML = '<p class="muted center">Yhdistetään huoneeseen <b>' + esc(code) + '</b>…</p>';
   $('room-share').innerHTML = '';
   $('lobby-options').innerHTML = '';
   $('btn-start').classList.add('hidden');
@@ -220,7 +228,7 @@ function joinGame(code) {
 }
 
 // ---------------------------------------------------------------------------
-// RENDER
+// RENDERÖINTI
 // ---------------------------------------------------------------------------
 function render() {
   const s = app.state;
@@ -236,7 +244,6 @@ function render() {
   }
 }
 
-/** Re-render a container's HTML while keeping focus/caret in inputs. */
 function withFocus(fn) {
   const a = document.activeElement;
   const id = a && a.id;
@@ -260,14 +267,13 @@ function seatSelectValue(seat) {
 
 function renderLobby(s) {
   const host = app.role === 'host';
-  // Share box
   if (s.online) {
     $('room-share').innerHTML = s.code
-      ? `<span class="muted">Room</span><span class="room-code">${esc(s.code)}</span>
-         <button class="btn secondary small" data-action="copy-link">📋 Copy invite link</button>`
-      : '<span class="muted">Opening room…</span>';
+      ? `<span class="muted">Huone</span><span class="room-code">${esc(s.code)}</span>
+         <button class="btn secondary small" data-action="copy-link">📋 Kopioi kutsulinkki</button>`
+      : '<span class="muted">Avataan huonetta…</span>';
   } else {
-    $('room-share').innerHTML = '<span class="muted">Offline · bots &amp; hot-seat</span>';
+    $('room-share').innerHTML = '<span class="muted">Offline · botit &amp; samalla laitteella</span>';
   }
 
   withFocus(() => {
@@ -280,28 +286,29 @@ function renderLobby(s) {
       if (seat.type === 'host') {
         main = (host
           ? `<input id="seat-name-${i}" data-seat-name="${i}" value="${esc(seat.name)}" maxlength="20" />`
-          : `<div class="seat-name">${esc(seat.name)}</div>`) + `<div class="seat-sub">Host</div>`;
+          : `<div class="seat-name">${esc(seat.name)}</div>`) + `<div class="seat-sub">Huoneen luoja</div>`;
       } else if (seat.type === 'human') {
         main = (mine
           ? `<input id="seat-name-${i}" data-self-name="1" value="${esc(seat.name)}" maxlength="20" />`
           : `<div class="seat-name">${esc(seat.name)}</div>`) +
-          `<div class="seat-sub">${mine ? 'You · ' : ''}Online player${seat.connected === false ? ' · disconnected' : ''}</div>`;
+          `<div class="seat-sub">${mine ? 'Sinä · ' : ''}Verkkopelaaja${seat.connected === false ? ' · yhteys katkennut' : ''}</div>`;
       } else if (seat.type === 'local') {
         main = (host
           ? `<input id="seat-name-${i}" data-seat-name="${i}" value="${esc(seat.name)}" maxlength="20" />`
-          : `<div class="seat-name">${esc(seat.name)}</div>`) + `<div class="seat-sub">Hot-seat player on host's device</div>`;
+          : `<div class="seat-name">${esc(seat.name)}</div>`) + `<div class="seat-sub">Pelaaja samalla laitteella</div>`;
       } else if (seat.type === 'bot') {
-        main = `<div class="seat-name">${esc(seat.name)}</div><div class="seat-sub">Computer · ${esc(seat.botLevel)}</div>`;
+        const fiLevel = BOT_LEVEL_NAMES[seat.botLevel] || seat.botLevel;
+        main = `<div class="seat-name">${esc(seat.name)}</div><div class="seat-sub">Tietokone · ${esc(fiLevel)}</div>`;
       } else if (seat.type === 'open') {
-        main = `<div class="seat-name">Waiting for player…</div><div class="seat-sub">Share the invite link</div>`;
+        main = `<div class="seat-name">Odotetaan pelaajaa…</div><div class="seat-sub">Jaa kutsulinkki kaverillesi</div>`;
       } else {
-        main = `<div class="seat-name muted">Empty seat</div>`;
+        main = `<div class="seat-name muted">Tyhjä paikka</div>`;
       }
       if (host && i > 0) {
         const opts = [];
         if (seat.type === 'human') opts.push(['human', `👤 ${seat.name}`]);
-        if (s.online) opts.push(['open', '🌐 Open for online player']);
-        opts.push(['local', '🪑 Hot-seat player'], ['bot-easy', '🤖 Bot – easy'], ['bot-medium', '🤖 Bot – medium'], ['bot-hard', '🤖 Bot – hard'], ['closed', '✕ No player']);
+        if (s.online) opts.push(['open', '🌐 Avoin verkkopelaajalle']);
+        opts.push(['local', '🪑 Pelaaja samalla laitteella'], ['bot-easy', '🤖 Botti – helppo'], ['bot-medium', '🤖 Botti – keskitaso'], ['bot-hard', '🤖 Botti – vaikea'], ['closed', '✕ Ei pelaajaa']);
         const v = seatSelectValue(seat);
         control = `<select data-seat-type="${i}">${opts.map(([val, label]) => `<option value="${val}" ${val === v ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
       }
@@ -314,15 +321,16 @@ function renderLobby(s) {
   });
 
   const o = s.options;
+  const styleNames = { compact: 'Kompakti', normal: 'Normaali', spread: 'Levittäytyvä' };
   $('lobby-options').innerHTML = host
-    ? `<label>Pasture shape
+    ? `<label>Laitumen muoto
          <select data-option="style">
-           <option value="compact" ${o.style === 'compact' ? 'selected' : ''}>Compact</option>
-           <option value="normal" ${o.style === 'normal' ? 'selected' : ''}>Normal</option>
-           <option value="spread" ${o.style === 'spread' ? 'selected' : ''}>Sprawling</option>
+           <option value="compact" ${o.style === 'compact' ? 'selected' : ''}>Kompakti</option>
+           <option value="normal" ${o.style === 'normal' ? 'selected' : ''}>Normaali</option>
+           <option value="spread" ${o.style === 'spread' ? 'selected' : ''}>Levittäytyvä</option>
          </select></label>
-       <label><input type="checkbox" data-option="randomStart" ${o.randomStart ? 'checked' : ''}/> Random starting player</label>`
-    : `<span class="muted">Pasture: ${esc(o.style)} · ${o.randomStart ? 'random' : 'fixed'} start</span>`;
+       <label><input type="checkbox" data-option="randomStart" ${o.randomStart ? 'checked' : ''}/> Arvo aloittava pelaaja</label>`
+    : `<span class="muted">Laidun: ${esc(styleNames[o.style] || o.style)} · ${o.randomStart ? 'arvottu' : 'kiinteä'} aloittaja</span>`;
 
   const active = s.seats.filter((x) => ['host', 'human', 'local', 'bot'].includes(x.type)).length;
   const startBtn = $('btn-start');
@@ -330,12 +338,12 @@ function renderLobby(s) {
   startBtn.disabled = active < 2;
   const waitingOpen = s.seats.some((x) => x.type === 'open');
   $('lobby-msg').textContent = host
-    ? (active < 2 ? 'Add at least one more player or a bot.' : waitingOpen ? 'Open seats are ignored when you start.' : '')
-    : 'Waiting for the host to start the game…';
+    ? (active < 2 ? 'Lisää vähintään yksi toinen pelaaja tai botti.' : waitingOpen ? 'Avoimia paikkoja ei huomioida pelin alkaessa.' : '')
+    : 'Odotetaan huoneen luojan aloittavan pelin…';
 }
 
 // ---------------------------------------------------------------------------
-// GAME RENDER
+// LAUDAN JA PELIN RENDERÖINTI
 // ---------------------------------------------------------------------------
 const HEX = 40;
 const SQ3 = Math.sqrt(3);
@@ -379,19 +387,18 @@ function renderBoard(s, ctx) {
     `<marker id="arrow-${i}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c.dark}"/></marker>`));
   out.push('</defs>');
 
-  // Earthy underside for a 3D tile look
+  // 3D-maakerros
   out.push('<g>');
   for (const k of keys) { const [x, y] = centers[k]; out.push(`<polygon points="${hexPoints(x, y + 9)}" fill="#8a6239" stroke="#6b4a29" stroke-width="2"/>`); }
   out.push('</g>');
 
-  // Fields
+  // Laidunkentät
   out.push('<g>');
   for (const k of keys) {
     const [x, y] = centers[k];
     const c = cells[k];
     const cls = ctx.clickable.has(k) ? 'cell clickable' : 'cell';
     out.push(`<polygon class="${cls}" data-k="${k}" points="${hexPoints(x, y)}" fill="${GRASS[c.tile % GRASS.length]}" stroke="rgba(40,90,30,0.25)" stroke-width="1.5"/>`);
-    // Grass tufts & occasional flower (deterministic per field)
     const h = hash(k + g.seed);
     for (let t = 0; t < 3; t++) {
       const tx = x + (((h >> (t * 5)) & 31) / 31 - 0.5) * HEX * 1.1;
@@ -405,7 +412,7 @@ function renderBoard(s, ctx) {
   }
   out.push('</g>');
 
-  // Tile and outer edges
+  // Reunaviivat
   const edges = [];
   for (const k of keys) {
     const [q, r] = parseKey(k);
@@ -414,7 +421,7 @@ function renderBoard(s, ctx) {
       const nk = key(q + dq, r + dr);
       const n = cells[nk];
       if (n && n.tile === cells[k].tile) return;
-      if (n && k > nk) return; // draw shared tile edge once
+      if (n && k > nk) return;
       const [a, b] = EDGE_CORNERS[d];
       const [x1, y1] = corner(x, y, a);
       const [x2, y2] = corner(x, y, b);
@@ -423,13 +430,13 @@ function renderBoard(s, ctx) {
   }
   out.push(`<g pointer-events="none">${edges.join('')}</g>`);
 
-  // Placement highlights
+  // Aloitussijoituksen hehkukentät
   for (const k of ctx.placeable) {
     const [x, y] = centers[k];
     out.push(`<polygon class="hl-place" points="${hexPoints(x, y, HEX * 0.82)}"/>`);
   }
 
-  // Last move arrow
+  // Viimeisimmän siirron nuoli
   const lm = g.lastMove;
   if (lm && lm.type === 'move' && cells[lm.from] && cells[lm.to]) {
     const [x1, y1] = centers[lm.from];
@@ -440,14 +447,14 @@ function renderBoard(s, ctx) {
     out.push(`<line x1="${(x1 + ux * HEX * 0.5).toFixed(1)}" y1="${(y1 + uy * HEX * 0.5).toFixed(1)}" x2="${(x2 - ux * HEX * 0.55).toFixed(1)}" y2="${(y2 - uy * HEX * 0.55).toFixed(1)}" stroke="${col.dark}" stroke-width="5" stroke-dasharray="2 9" stroke-linecap="round" opacity="0.6" marker-end="url(#arrow-${g.players[lm.player].color})" pointer-events="none"/>`);
   }
 
-  // Selectable stack rings
+  // Valittavissa olevien pinojen renkaat
   for (const k of ctx.selectable) {
     const [x, y] = centers[k];
     const isSel = k === app.sel;
     out.push(`<circle class="${isSel ? 'sel-ring' : ''}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${HEX * 0.72}" fill="${isSel ? 'rgba(255,255,255,0.35)' : 'none'}" stroke="#fff" stroke-width="${isSel ? 4 : 2.5}" stroke-dasharray="${isSel ? '8 5' : '4 6'}" pointer-events="none"/>`);
   }
 
-  // Sheep
+  // Lampaat
   for (const k of keys) {
     const c = cells[k];
     if (c.owner < 0) continue;
@@ -466,7 +473,7 @@ function renderBoard(s, ctx) {
     out.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><g class="${cls}">${inner}</g></g>`);
   }
 
-  // Destinations for the selected stack
+  // Valitun pinon kohderuutumerkit
   for (const k of ctx.dests) {
     const [x, y] = centers[k];
     const col = PLAYER_COLORS[g.players[g.turn].color];
@@ -484,14 +491,12 @@ function renderGame(s) {
   const g = s.game;
   const myTurn = (g.phase === 'placement' || g.phase === 'play') && controlsPlayer(s, g.turn);
 
-  // Validate selection against the latest state
   if (!myTurn || g.phase !== 'play') { app.sel = null; app.pending = null; }
   if (app.sel) {
     const c = g.cells[app.sel];
     if (!c || c.owner !== g.turn || c.count < 2) { app.sel = null; app.pending = null; }
   }
 
-  // Which fields just got sheep (for animations)
   const fresh = new Set();
   const prev = app.prev;
   if (prev && prev.seed === g.seed) {
@@ -501,7 +506,7 @@ function renderGame(s) {
   for (const k in g.cells) owners[k] = g.cells[k].owner;
   const sameFrame = prev && prev.seed === g.seed && prev.version === s.version;
   app.prev = { seed: g.seed, owners, version: s.version, fresh: sameFrame ? prev.fresh : fresh };
-  const freshNow = sameFrame ? new Set() : fresh; // only animate once per state
+  const freshNow = sameFrame ? new Set() : fresh;
 
   const ctx = { clickable: new Set(), placeable: [], selectable: [], dests: [], fresh: freshNow };
   if (myTurn && g.phase === 'placement') {
@@ -522,30 +527,30 @@ function renderGame(s) {
   }
   renderBoard(s, ctx);
 
-  // Turn banner
+  // Vuoropalkki
   const banner = $('turn-banner');
   const controlledHumans = g.players.filter((p) => controlsPlayer(s, p.index)).length;
   if (g.phase === 'over') {
     banner.className = 'turn-banner';
     banner.style.borderColor = 'transparent';
-    banner.innerHTML = '🏁 Game over';
+    banner.innerHTML = '🏁 Peli päättyi';
   } else {
     const pl = g.players[g.turn];
     const col = PLAYER_COLORS[pl.color];
     banner.style.borderColor = col.main;
     banner.className = `turn-banner ${myTurn ? 'mine' : ''}`;
-    const who = controlledHumans > 1 ? `${esc(pl.name)}, your turn` : 'Your turn';
+    const who = controlledHumans > 1 ? `${esc(pl.name)}, sinun vuorosi` : 'Sinun vuorosi';
     let text;
-    if (myTurn && g.phase === 'placement') text = `${who} – place your flock of ${SHEEP_PER_PLAYER} on a glowing edge field`;
-    else if (myTurn && app.pending) text = 'Choose how many sheep go';
-    else if (myTurn && app.sel) text = 'Pick a destination – or another stack';
-    else if (myTurn) text = `${who} – pick a stack to split`;
-    else if (pl.kind === 'bot') text = `${esc(pl.name)} is thinking…`;
-    else text = `Waiting for ${esc(pl.name)}…`;
+    if (myTurn && g.phase === 'placement') text = `${who} – aseta koko 16 lampaan laumasi hehkuvaan reunaruutuun`;
+    else if (myTurn && app.pending) text = 'Valitse kuinka monta lammasta siirtyy';
+    else if (myTurn && app.sel) text = 'Valitse kohderuutu – tai toinen pino';
+    else if (myTurn) text = `${who} – valitse pino ja jaa se`;
+    else if (pl.kind === 'bot') text = `${esc(pl.name)} miettii siirtoa…`;
+    else text = `Odotetaan pelaajaa ${esc(pl.name)}…`;
     banner.innerHTML = `<span class="dot" style="background:${col.main}"></span>${text}`;
   }
 
-  // Split panel
+  // Jakovalikko
   const panel = $('split-panel');
   if (app.pending) {
     panel.classList.remove('hidden');
@@ -556,12 +561,12 @@ function renderGame(s) {
     $('split-stay').textContent = g.cells[app.pending.from].count - app.pending.go;
   } else panel.classList.add('hidden');
 
-  // Room info
+  // Huoneen tiedot
   $('game-room').innerHTML = s.online
-    ? `<span>Room <b>${esc(s.code || '…')}</b></span><button class="btn ghost small" data-action="copy-link">📋 Invite</button>`
-    : '<span>Offline game</span>';
+    ? `<span>Huone <b>${esc(s.code || '…')}</b></span><button class="btn ghost small" data-action="copy-link">📋 Kutsu</button>`
+    : '<span>Offline-peli</span>';
 
-  // Players
+  // Pelaajat
   const order = g.order.map((i) => g.players[i]);
   $('players').innerHTML = order.map((pl) => {
     const seat = s.seats[pl.seat] || {};
@@ -569,74 +574,79 @@ function renderGame(s) {
     const stuck = g.phase === 'play' && !canMove(g, pl.index);
     const active = g.turn === pl.index && g.phase !== 'over';
     let sub;
-    if (pl.kind === 'bot') sub = `🤖 ${pl.botLevel} bot`;
-    else if (seat.type === 'host') sub = '👑 Host';
-    else if (seat.type === 'local') sub = '🪑 Hot-seat';
-    else sub = seat.connected === false ? '⚠️ Disconnected' : '🌐 Online';
-    if (controlsPlayer(s, pl.index)) sub += ' · you';
-    if (stuck) sub += ' · can’t move';
+    if (pl.kind === 'bot') {
+      const fiLvl = BOT_LEVEL_NAMES[pl.botLevel] || pl.botLevel;
+      sub = `🤖 ${fiLvl} botti`;
+    } else if (seat.type === 'host') sub = '👑 Huoneen luoja';
+    else if (seat.type === 'local') sub = '🪑 Samalla laitteella';
+    else sub = seat.connected === false ? '⚠️ Yhteys katkennut' : '🌐 Verkossa';
+
+    if (controlsPlayer(s, pl.index)) sub += ' · sinä';
+    if (stuck) sub += ' · ei voi liikkua';
     const stacks = Object.values(g.cells).filter((c) => c.owner === pl.index).length;
     return `<div class="player ${active ? 'active' : ''} ${stuck ? 'stuck' : ''}" style="color:${col.main}">
       ${sheepIcon(pl.color, 34)}
       <div class="p-main"><div class="p-name">${esc(pl.name)}</div><div class="p-sub">${sub}</div></div>
-      <div class="p-score"><b>${stacks}</b><small>fields</small></div>
+      <div class="p-score"><b>${stacks}</b><small>ruutua</small></div>
     </div>`;
   }).join('');
 
-  // Host tools
+  // Isännän työkalut
   const tools = [];
   if (app.role === 'host') {
-    if (g.phase === 'placement' && g.placementQueue.length === g.players.length) tools.push('<button class="btn secondary small" data-action="reroll">🎲 New pasture</button>');
+    if (g.phase === 'placement' && g.placementQueue.length === g.players.length) {
+      tools.push('<button class="btn secondary small" data-action="reroll">🎲 Uusi laidun</button>');
+    }
     g.players.forEach((pl) => {
       const seat = s.seats[pl.seat];
       if (pl.kind !== 'bot' && seat.type === 'human' && seat.connected === false) {
-        tools.push(`<button class="btn danger small" data-action="replace-bot" data-player="${pl.index}">🤖 Replace ${esc(pl.name)}</button>`);
+        tools.push(`<button class="btn danger small" data-action="replace-bot" data-player="${pl.index}">🤖 Korvaa ${esc(pl.name)} botilla</button>`);
       }
     });
-    tools.push('<button class="btn ghost small" data-action="to-lobby">↩ Lobby</button>');
+    tools.push('<button class="btn ghost small" data-action="to-lobby">↩ Lobbyyn</button>');
   } else {
-    tools.push('<button class="btn ghost small" data-action="leave">Leave game</button>');
+    tools.push('<button class="btn ghost small" data-action="leave">Poistu pelistä</button>');
   }
-  if (g.phase === 'over' && app.hideGameOver) tools.push('<button class="btn secondary small" data-action="show-results">🏆 Results</button>');
+  if (g.phase === 'over' && app.hideGameOver) tools.push('<button class="btn secondary small" data-action="show-results">🏆 Tulokset</button>');
   $('host-tools').innerHTML = tools.join('');
 
-  // Log
+  // Loki
   const log = $('log');
   log.innerHTML = g.log.slice().reverse().map((e) => {
     const dot = e.player != null ? `<span class="dot" style="background:${PLAYER_COLORS[g.players[e.player].color].main}"></span>` : '<span>📣</span>';
     return `<li>${dot}<span>${esc(e.text)}</span></li>`;
   }).join('');
 
-  // Game over
+  // Pelin päättyminen
   const over = $('gameover');
   if (g.phase === 'over' && !app.hideGameOver) {
     over.classList.remove('hidden');
     const res = g.results;
     const winners = res.filter((r) => r.rank === 1).map((r) => g.players[r.player]);
     const iWon = winners.some((w) => controlsPlayer(s, w.index));
-    const title = winners.length > 1 ? `It's a tie!` : `${esc(winners[0].name)} wins!`;
+    const title = winners.length > 1 ? `Tasapeli!` : `${esc(winners[0].name)} voitti!`;
     const medals = ['🥇', '🥈', '🥉', '4️⃣'];
     $('gameover-card').innerHTML = `
       <div class="trophy">${iWon ? '🏆' : '🐑'}</div>
       <h2>${title}</h2>
       <table class="results">
-        <tr><th></th><th>Player</th><th class="num">Fields</th><th class="num">Biggest herd</th></tr>
+        <tr><th></th><th>Pelaaja</th><th class="num">Ruudut</th><th class="num">Suurin lauma</th></tr>
         ${res.map((r) => {
           const pl = g.players[r.player];
           return `<tr><td>${medals[r.rank - 1]}</td><td><span class="dot" style="background:${PLAYER_COLORS[pl.color].main}"></span> ${esc(pl.name)}</td><td class="num"><b>${r.fields}</b></td><td class="num">${r.group}</td></tr>`;
         }).join('')}
       </table>
       <div class="gameover-actions">
-        <button class="btn ghost" data-action="hide-results">View board</button>
+        <button class="btn ghost" data-action="hide-results">Tarkastele lautaa</button>
         ${app.role === 'host'
-          ? '<button class="btn secondary" data-action="to-lobby">Lobby</button><button class="btn primary" data-action="rematch">Rematch</button>'
-          : '<span class="muted" style="align-self:center">Waiting for host…</span>'}
+          ? '<button class="btn secondary" data-action="to-lobby">Lobbyyn</button><button class="btn primary" data-action="rematch">Uusi peli</button>'
+          : '<span class="muted" style="align-self:center">Odotetaan huoneen luojaa…</span>'}
       </div>`;
   } else over.classList.add('hidden');
 }
 
 // ---------------------------------------------------------------------------
-// Board interaction
+// Laudalla klikkailu
 // ---------------------------------------------------------------------------
 function onBoardClick(e) {
   const s = app.state;
@@ -656,7 +666,6 @@ function onBoardClick(e) {
   if (app.sel && destinationsFrom(g.cells, app.sel).some((d) => d.to === k)) {
     const from = g.cells[app.sel];
     if (from.count === 2) {
-      // Only one possible split – move straight away.
       send({ type: 'move', from: app.sel, to: k, count: 1 });
       app.sel = null;
       return;
@@ -690,7 +699,7 @@ function confirmSplit() {
 }
 
 // ---------------------------------------------------------------------------
-// Event wiring
+// Tapahtumakäsittelijät
 // ---------------------------------------------------------------------------
 async function copyInvite() {
   const code = app.state && app.state.code;
@@ -698,19 +707,36 @@ async function copyInvite() {
   const link = inviteLink(code);
   try {
     await navigator.clipboard.writeText(link);
-    toast('Invite link copied!');
+    toast('Kutsulinkki kopioitu leikepöydälle!');
   } catch {
-    prompt('Copy this invite link:', link);
+    prompt('Kopioi tämä kutsulinkki:', link);
+  }
+}
+
+// Käynnistetään taustamusiikki ensimmäisestä käyttäjän klikkauksesta
+let audioStarted = false;
+function ensureAudioStarted() {
+  if (!audioStarted) {
+    audioStarted = true;
+    if (music.enabled) {
+      music.start();
+    }
   }
 }
 
 document.addEventListener('click', (e) => {
+  ensureAudioStarted();
+
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const a = el.dataset.action;
   switch (a) {
+    case 'toggle-music':
+      music.toggle();
+      updateMusicUI();
+      break;
     case 'home':
-      if (app.state && !confirm('Leave the current game?')) return;
+      if (app.state && !confirm('Haluatko poistua nykyisestä pelistä?')) return;
       goHome();
       break;
     case 'rules': $('rules').classList.remove('hidden'); break;
@@ -719,7 +745,7 @@ document.addEventListener('click', (e) => {
     case 'create-offline': createGame(false); break;
     case 'join': joinGame($('join-code').value); break;
     case 'leave':
-      if (app.role === 'host' && app.state && app.state.online && !confirm('Leaving closes the room for everyone. Continue?')) return;
+      if (app.role === 'host' && app.state && app.state.online && !confirm('Poistuminen sulkee huoneen kaikilta pelaajilta. Haluatko varmasti poistua?')) return;
       goHome();
       break;
     case 'start': send({ type: 'start' }); break;
@@ -727,7 +753,7 @@ document.addEventListener('click', (e) => {
     case 'reroll': send({ type: 'reroll' }); break;
     case 'rematch': app.hideGameOver = false; send({ type: 'rematch' }); break;
     case 'to-lobby':
-      if (app.state.game && app.state.game.phase !== 'over' && !confirm('End this game and return to the lobby?')) return;
+      if (app.state.game && app.state.game.phase !== 'over' && !confirm('Päätetäänkö tämä peli ja palataan lobbyyn?')) return;
       send({ type: 'toLobby' });
       break;
     case 'replace-bot': send({ type: 'replaceWithBot', player: Number(el.dataset.player) }); break;
@@ -769,6 +795,7 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  ensureAudioStarted();
   if (e.key === 'Escape') {
     $('rules').classList.add('hidden');
     if (app.pending) { app.pending = null; render(); } else if (app.sel) { app.sel = null; render(); }
@@ -791,19 +818,19 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Boot
+// Käynnistys
 // ---------------------------------------------------------------------------
 $('home-name').value = store.name;
+updateMusicUI();
+
 const urlRoom = new URLSearchParams(location.search).get('room');
 if (urlRoom) {
   $('join-code').value = urlRoom.toUpperCase();
   if (store.name) {
-    // Returning player (e.g. page reload) – rejoin automatically once PeerJS loads.
     window.addEventListener('load', () => joinGame(urlRoom));
   } else {
     $('home-name').focus();
-    $('home-error').textContent = 'Enter your name and press Join to enter the room.';
+    $('home-error').textContent = 'Kirjoita nimesi ja paina Liity astuaksesi huoneeseen.';
   }
 }
 showScreen('home');
-

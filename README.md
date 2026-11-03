@@ -1,45 +1,43 @@
-# 🐑 Battle Sheeps – online
+# 🐑 Taistelulampaat – moninpeli verkossa
 
-A fan-made browser version of the tactical board game **Battle Sheep**. You can play online with up to 4 players, against bots, or hot-seat on one device.
+Suomenkielinen verkkoselainversio taktisesta lautapelistä **Battle Sheep (Taistelulampaat)**. Voit pelata verkossa 1–4 pelaajan kesken, tekoälyä vastaan tai samalla laitteella (hot-seat).
 
-**Play online:** https://sammakkoshamaani.github.io/Taistelulampaat/
+**Pelaa suoraan verkossa:** https://sammakkoshamaani.github.io/Taistelulampaat/
 
-## Features
+## Ominaisuudet
 
-- **Online multiplayer for 1–4 players.** It's peer-to-peer over WebRTC (PeerJS), so you don't need a server. The host's browser runs the game, and friends join with a 5-letter room code or an invite link.
-- **Bots:** easy, medium and hard. Any seat can be a bot, so one human can play against 1–3 bots.
-- **Hot-seat:** several people can share the host's device.
-- **Random pasture:** each game builds a new board from 4 four-hex tiles per player, in a compact, normal or sprawling layout.
-- **Reconnects:** a guest who reloads the page gets their seat back. The host can hand a seat that has gone offline to a bot.
-- Works on mobile, has animations, and plays without a build step. It's plain HTML, CSS and JS modules.
+- **Verkkomoninpeli 1–4 pelaajalle:** Toimii vertaisverkkoyhteydellä (WebRTC / PeerJS) ilman erillistä taustapalvelinta. Huoneen luojan selain toimii isäntänä, ja ystävät liittyvät mukaan 5-merkkisellä huonekoodilla tai suoralla kutsulinkillä.
+- **Tekoälybotit (3 vaikeustasoa):** Helppo, keskitaso ja vaikea. Jokaiselle paikalle voidaan asettaa botti, joten yksinpelaaja voi pelata 1–3 bottia vastaan.
+- **Pelaaminen samalla laitteella:** Useampi pelaaja voi pelata vuorotellen samalta ruudulta.
+- **Rauhallinen taustamusiikki:** Web Audio API:lla syntetisoitu laidunmusiikki, jonka voi kytkeä päälle tai pois yläpalkin painikkeesta.
+- **Dynaamisesti generoituva laidun:** Jokainen peli luo uudenlaisen laitumenneljän heksan laattapaloista (kompakti, normaali tai levittäytyvä).
+- **Yhteyden palautus:** Jos pelaaja päivittää selainsivun, hän pääsee automaattisesti takaisin omalle paikalleen. Yhteyden katketessa isäntä voi korvata pudonneen pelaajan botilla.
+- **Mobiili- ja tietokoneyhteensopiva:** Toimii kaikilla laitteilla ilman asennusta tai käännösvaihetta (puhdasta HTML-, CSS- ja JavaScript-koodia).
 
-## Rules
+## Pelisäännöt
 
-1. Each player puts their 16-sheep flock on an empty field at the edge of the pasture.
-2. On your turn, split one of your stacks. Leave at least 1 sheep behind and move the rest.
-3. The moving sheep go in a straight line, in any of the 6 directions, and keep going until they hit the edge or an occupied field.
-4. If you can't move, you are skipped. The game ends when nobody can move.
-5. The player on the most fields wins. Ties go to whoever has the largest connected group.
+1. Kukin pelaaja asettaa vuorollaan koko 16 lampaan laumansa tyhjälle kentälle laitumen **ulkoreunalle**.
+2. Vuorollasi valitse jokin olemassa olevista pinoistasi, jossa on vähintään 2 lammasta, ja **jaa se**: jätä vähintään 1 lammas paikalleen ja siirrä loput eteenpäin.
+3. Liikkuvat lampaat kulkevat **suorassa linjassa** (6 eri suuntaan) ja etenevät **niin pitkälle kuin mahdollista**, kunnes vastaan tulee laidunalueen reuna tai toinen lammaspino.
+4. Jos pelaaja ei voi tehdä yhtäkään laillista siirtoa, vuoro ohitetaan. Peli päättyy, kun yksikään pelaaja ei voi enää liikkua.
+5. **Voittaja:** Pelaaja, jolla on pelin päättyessä hallussaan eniten laidunruutuja. Tasatilanteen ratkaisee suurin yhtenäinen laidunalue.
 
-## Run locally
+## Paikallinen suoritus ja testit
 
 ```bash
-python3 -m http.server 8080   # then open http://localhost:8080
-npm test                      # headless bot-vs-bot simulations + room tests
-node tests/room.js
+python3 -m http.server 8080   # Avaa sitten selaimessa: http://localhost:8080
+npm test                      # Ajaa bottien väliset simulaatiot ja huonetestit
 ```
 
-## How it works
+## Arkkitehtuuri
 
-| File | Purpose |
+| Tiedosto | Rooli |
 | --- | --- |
-| `js/game.js` | Pure rules engine: board generation, moves, scoring |
-| `js/bot.js` | Bot AI: region-based evaluation; hard bots look ahead one full round |
-| `js/room.js` | Host-side game room that checks every action and runs the bots |
-| `js/net.js` | PeerJS host/guest networking |
-| `js/main.js` | UI, SVG board rendering, input |
+| `js/game.js` | Pelilogiikka, laidungeneraattori, siirtojen validointi ja pistelasku |
+| `js/bot.js` | Tekoäly: aluepohjainen heuristiikka ja siirtojen ennakointi |
+| `js/room.js` | Isäntäselaimessa pyörivä huonehallinta (pelaajapaikat, vuorot, botit) |
+| `js/net.js` | P2P-verkkoliikenne (PeerJS WebRTC + BroadcastChannel välilehtien välille) |
+| `js/audio.js` | Syntetisoitu pastoralinen taustamusiikki (Web Audio API) |
+| `js/main.js` | Käyttöliittymä, SVG-laudan piirto, animaatiot ja tapahtumat |
 
-The host has the final say on game state. Guests send actions, the host checks them and sends the new state to everyone. If the host closes their tab, the room closes.
-
-> Battle Sheep is a trademark of Blue Orange Games. This is a fan project for personal and educational use. It is not affiliated with or endorsed by Blue Orange Games.
-
+> Battle Sheep on Blue Orange Gamesin tavaramerkki. Tämä on vapaa fanitoteutus opetus- ja harrastekäyttöön.
